@@ -82,6 +82,9 @@ public partial class MainForm : Form {
     }
 
     private void UpdateTrayIcon(int wpm) {
+        // Update the tooltip text.
+        notifyIcon.Text = $"WPM: {wpm}\nKeystrokes: {totalKeystrokes:N0}";
+
         // Get the width based on WPM.
         var imageWidth = wpm >= 100 ? 24 : 16;
 
@@ -106,37 +109,38 @@ public partial class MainForm : Form {
         }
 
         // Create the final icon bitmap, scaling if necessary.
-        Bitmap iconBmp = null;
+        using var squeezedBmp = new Bitmap(16, 16);
         if (imageWidth == 24) {
             // Scale the entire 24x16 image down to 16x16.
-            using var squeezedBmp = new Bitmap(16, 16);
-            using (var g = Graphics.FromImage(squeezedBmp)) {
-                g.Clear(Color.Transparent);
-                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                g.DrawImage(bmp, new Rectangle(0, 0, 16, 16), new Rectangle(0, 0, 24, 16), GraphicsUnit.Pixel);
-            }
-            iconBmp = squeezedBmp.Clone(new Rectangle(0, 0, 16, 16), squeezedBmp.PixelFormat);
-        } else {
-            // Just clone the 16x16 image.
-            iconBmp = (Bitmap)bmp.Clone();
+            using var gfx = Graphics.FromImage(squeezedBmp);
+            gfx.Clear(Color.Transparent);
+            gfx.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            gfx.DrawImage(bmp, new Rectangle(0, 0, 16, 16), new Rectangle(0, 0, 24, 16), GraphicsUnit.Pixel);
         }
 
+        // Create the final icon bitmap, scaling if necessary.
+        using var iconBmp = imageWidth == 24
+            ? squeezedBmp.Clone(new Rectangle(0, 0, 16, 16), squeezedBmp.PixelFormat)
+            : (Bitmap)bmp.Clone();
+
         // Convert the bitmap to an icon and set it on notifyIcon.
-        var hIcon = iconBmp.GetHicon();
+        IntPtr hIcon;
+        try {
+            hIcon = iconBmp.GetHicon();
+        } catch (Exception) {
+            return;
+        }
+
         try {
             using var icon = Icon.FromHandle(hIcon);
             notifyIcon.Icon = (Icon)icon.Clone();
         } finally {
             NativeMethods.DestroyIcon(hIcon);
-            iconBmp.Dispose();
         }
-
-        // Update the tooltip text.
-        notifyIcon.Text = $"WPM: {wpm}\nKeystrokes: {totalKeystrokes:N0}";
     }
 
     private static partial class NativeMethods {
-        [LibraryImport("user32.dll", EntryPoint = "DestroyIconW")]
+        [LibraryImport("user32.dll", EntryPoint = "DestroyIcon")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static partial bool DestroyIcon(IntPtr handle);
     }
