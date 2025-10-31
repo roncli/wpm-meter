@@ -18,6 +18,10 @@ public partial class MainForm : Form {
     private readonly ContextMenuStrip trayMenu = new();
     private readonly NotifyIcon notifyIcon = new() { Visible = true, Text = "WPM: 0\nKeystrokes: 0" };
 
+    // Set the font and color.
+    private readonly Font font = new("Tahoma", 10, FontStyle.Bold, GraphicsUnit.Point);
+    private readonly SolidBrush brush = new(Color.FromArgb(70, 106, 70));
+
     public MainForm() {
         // Hide the form.
         ShowInTaskbar = false;
@@ -42,7 +46,6 @@ public partial class MainForm : Form {
         FormClosed += (s, e) => {
             WindowsKeyboardHook.OnGlobalKey -= OnGlobalKey;
             notifyIcon.Visible = false;
-            notifyIcon.Dispose();
         };
     }
 
@@ -94,10 +97,6 @@ public partial class MainForm : Form {
             gfx.Clear(Color.Transparent);
             gfx.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit;
 
-            // Set the font and color.
-            using var font = new Font("Tahoma", 10, FontStyle.Bold, GraphicsUnit.Point);
-            using var brush = new SolidBrush(Color.FromArgb(70, 106, 70));
-
             // Set the text and measure its size.
             var text = wpm.ToString();
             var size = gfx.MeasureString(text, font);
@@ -133,7 +132,10 @@ public partial class MainForm : Form {
 
         try {
             using var icon = Icon.FromHandle(hIcon);
-            notifyIcon.Icon = (Icon)icon.Clone();
+            var newIcon = (Icon)icon.Clone();
+            var oldIcon = notifyIcon.Icon;
+            notifyIcon.Icon = newIcon;
+            oldIcon?.Dispose();
         } finally {
             NativeMethods.DestroyIcon(hIcon);
         }
@@ -143,5 +145,26 @@ public partial class MainForm : Form {
         [LibraryImport("user32.dll", EntryPoint = "DestroyIcon")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static partial bool DestroyIcon(IntPtr handle);
+    }
+
+    protected override void Dispose(bool disposing) {
+        if (disposing) {
+            // Ensure OnGlobalKey is unsubscribed.
+            WindowsKeyboardHook.OnGlobalKey -= OnGlobalKey;
+
+            // Dispose the icon currently assigned to the NotifyIcon first to free its GDI handles.
+            notifyIcon.Visible = false;
+            var currentIcon = notifyIcon.Icon;
+            notifyIcon.Icon = null;
+            currentIcon?.Dispose();
+
+            // Dispose remaining assets.
+            notifyIcon.Dispose();
+            trayMenu.Dispose();
+            font.Dispose();
+            brush.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 }
