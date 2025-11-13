@@ -107,8 +107,9 @@ public partial class MainForm : Form {
         // Update the tooltip text.
         notifyIcon.Text = $"WPM: {wpm}\nKeystrokes: {totalKeystrokes:N0}";
 
-        // Get the width based on WPM.
-        var imageWidth = wpm >= 100 ? 24 : 16;
+        // Get the width based on number of digits in the WPM.
+        var digitCount = Math.Max(2, wpm.ToString().Length);
+        var imageWidth = 16 + (digitCount - 2) * 8;
 
         // Create a bitmap and draw the WPM text.
         using var bmp = new Bitmap(imageWidth, 16);
@@ -128,16 +129,16 @@ public partial class MainForm : Form {
 
         // Create the final icon bitmap, scaling if necessary.
         using var squeezedBmp = new Bitmap(16, 16);
-        if (imageWidth == 24) {
+        if (imageWidth > 16) {
             // Scale the entire 24x16 image down to 16x16.
             using var gfx = Graphics.FromImage(squeezedBmp);
             gfx.Clear(Color.Transparent);
             gfx.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-            gfx.DrawImage(bmp, new Rectangle(0, 0, 16, 16), new Rectangle(0, 0, 24, 16), GraphicsUnit.Pixel);
+            gfx.DrawImage(bmp, new Rectangle(0, 0, 16, 16), new Rectangle(0, 0, imageWidth, 16), GraphicsUnit.Pixel);
         }
 
         // Create the final icon bitmap, scaling if necessary.
-        using var iconBmp = imageWidth == 24
+        using var iconBmp = imageWidth > 16
             ? squeezedBmp.Clone(new Rectangle(0, 0, 16, 16), squeezedBmp.PixelFormat)
             : (Bitmap)bmp.Clone();
 
