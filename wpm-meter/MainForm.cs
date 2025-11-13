@@ -78,7 +78,7 @@ public partial class MainForm : Form {
         }
 
         // Update the tray icon if WPM has changed.
-        if (Math.Abs(wpm - lastWpm) > 0.5) {
+        if (Math.Abs(Math.Round(wpm) - Math.Round(lastWpm)) > 0) {
             UpdateTrayIcon((int)Math.Round(wpm));
             lastWpm = wpm;
         }
