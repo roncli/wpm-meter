@@ -3,11 +3,9 @@ using System.Windows.Forms;
 
 namespace WpmMeter;
 
-internal static class Program
-{
+internal static class Program {
     [STAThread]
-    private static void Main()
-    {
+    private static void Main() {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         WindowsKeyboardHook.EnableHook();

@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Text;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
+using Timer = System.Windows.Forms.Timer;
 
 namespace WpmMeter;
 
@@ -12,7 +15,9 @@ public partial class MainForm : Form {
     private const int KEYSTROKES_PER_WORD = 5;
 
     private double lastWpm = 0;
-    private int totalKeystrokes = 0;
+    private long totalKeystrokes = 0;
+
+    private static readonly string KeystrokesFilePath = Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WpmMeter"), "keystrokes.bin");
 
     private readonly Queue<DateTime> _keystrokeTimestamps = new();
     private readonly ContextMenuStrip trayMenu = new();
@@ -21,6 +26,9 @@ public partial class MainForm : Form {
     // Set the font and color.
     private readonly Font font = new("Tahoma", 10, FontStyle.Bold, GraphicsUnit.Point);
     private readonly SolidBrush brush = new(Color.FromArgb(70, 106, 70));
+
+    // Timer to periodically save keystrokes.
+    private readonly Timer saveTimer;
 
     public MainForm() {
         // Hide the form.
@@ -39,11 +47,22 @@ public partial class MainForm : Form {
 
         // Create the tray icon.
         notifyIcon.ContextMenuStrip = trayMenu;
+
+        // Load persisted keystrokes (if present) before updating the tray icon.
+        LoadKeystrokes();
         UpdateTrayIcon(0);
+
+        // Start periodic save timer (every minute).
+        saveTimer = new System.Windows.Forms.Timer { Interval = 60_000 };
+        saveTimer.Tick += (s, e) => SaveKeystrokes();
+        saveTimer.Start();
 
         // Subscribe to global key events.
         WindowsKeyboardHook.OnGlobalKey += OnGlobalKey;
         FormClosed += (s, e) => {
+            // Ensure keystrokes are saved when the form closes.
+            SaveKeystrokes();
+
             WindowsKeyboardHook.OnGlobalKey -= OnGlobalKey;
             notifyIcon.Visible = false;
         };
@@ -59,7 +78,7 @@ public partial class MainForm : Form {
         // Record the keystroke timestamp and increment the total keystrokes.
         var now = DateTime.UtcNow;
         _keystrokeTimestamps.Enqueue(now);
-        totalKeystrokes++;
+        Interlocked.Increment(ref totalKeystrokes);
 
         // Remove keystrokes older than the rolling window.
         while (_keystrokeTimestamps.Count > 0 && (now - _keystrokeTimestamps.Peek()).TotalSeconds > ROLLING_WINDOW_SECONDS) {
@@ -152,6 +171,13 @@ public partial class MainForm : Form {
             // Ensure OnGlobalKey is unsubscribed.
             WindowsKeyboardHook.OnGlobalKey -= OnGlobalKey;
 
+            // Ensure keystrokes are persisted.
+            SaveKeystrokes();
+
+            // Stop and dispose the timer.
+            saveTimer?.Stop();
+            saveTimer?.Dispose();
+
             // Dispose the icon currently assigned to the NotifyIcon first to free its GDI handles.
             notifyIcon.Visible = false;
             var currentIcon = notifyIcon.Icon;
@@ -166,5 +192,34 @@ public partial class MainForm : Form {
         }
 
         base.Dispose(disposing);
+    }
+
+    private void SaveKeystrokes() {
+        var path = KeystrokesFilePath;
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir)) {
+            Directory.CreateDirectory(dir);
+        }
+
+        // Read the current value atomically and write it as a binary Int64.
+        var value = Interlocked.Read(ref totalKeystrokes);
+        using var fs = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var bw = new BinaryWriter(fs);
+        bw.Write(value);
+    }
+
+    private void LoadKeystrokes() {
+        var path = KeystrokesFilePath;
+        if (!File.Exists(path)) {
+            return;
+        }
+
+        using var fs = File.OpenRead(path);
+        using var br = new BinaryReader(fs);
+        var value = br.ReadInt64();
+        Interlocked.Exchange(ref totalKeystrokes, value);
+
+        // Update the tray tooltip to reflect the loaded keystrokes.
+        UpdateTrayIcon((int)Math.Round(lastWpm));
     }
 }
